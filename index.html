@@ -23,6 +23,29 @@
   <script type="text/babel" data-presets="react">
     const { useState, useEffect, useRef } = React;
 
+    // ---------- App info (shown in the About panel) ----------
+    const APP_INFO = {
+      author: 'Hunter Hearl',
+      year: 2026,
+      repoUrl: 'https://github.com/MacSax7/piercer-dice-roller', // e.g. 'https://github.com/yourname/piercer-roller' (adds a link in About)
+    };
+
+    // ---------- Theme colors for the Hits / Crits buttons ----------
+    // Swap the color name for any Tailwind color (red, rose, orange, amber, emerald,
+    // teal, sky, blue, indigo, violet, slate...) and adjust the shade number:
+    // lower numbers are lighter and brighter, higher numbers are deeper and calmer.
+    // "light" is used in light mode, "dark" in dark mode. Hover is usually one step away.
+    const THEME = {
+      hit: {
+        light: 'bg-red-500', lightHover: 'hover:bg-red-600',
+        dark: 'bg-red-900', darkHover: 'hover:bg-red-800',
+      },
+      crit: {
+        light: 'bg-blue-500', lightHover: 'hover:bg-blue-600',
+        dark: 'bg-blue-900', darkHover: 'hover:bg-blue-800',
+      },
+    };
+
     // ---------- Storage (Claude artifact storage if present, otherwise browser localStorage) ----------
     const STORAGE_KEY = 'piercer-settings';
 
@@ -221,6 +244,7 @@
 
     function PiercerDiceRoller() {
       const [view, setView] = useState('roller');
+      const [showAbout, setShowAbout] = useState(false);
       const [settings, setSettings] = useState(DEFAULT_SETTINGS);
       const [settingsLoaded, setSettingsLoaded] = useState(false);
       const [saveStatus, setSaveStatus] = useState('idle');
@@ -251,6 +275,14 @@
         document.body.style.backgroundColor = darkMode ? '#111827' : '#f1f5f9';
         document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light';
       }, [darkMode]);
+
+      // Close the About panel with the Escape key
+      useEffect(() => {
+        if (!showAbout) return;
+        const onKey = (e) => { if (e.key === 'Escape') setShowAbout(false); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [showAbout]);
 
       // Load saved settings once
       useEffect(() => {
@@ -485,15 +517,20 @@
       };
 
       // ---------- Shared styling ----------
+      const mode = darkMode ? 'dark' : 'light';
+      const hoverKey = darkMode ? 'darkHover' : 'lightHover';
       const unselectedBtnClass = darkMode ? 'bg-gray-700 text-gray-100' : 'bg-gray-200 text-gray-900';
-      const selectedHitClass = darkMode ? 'bg-red-900 text-white' : 'bg-red-500 text-white';
-      const selectedCritClass = darkMode ? 'bg-blue-900 text-white' : 'bg-blue-500 text-white';
+      const selectedHitClass = `${THEME.hit[mode]} text-white`;
+      const selectedCritClass = `${THEME.crit[mode]} text-white`;
       const selectedNeutralClass = darkMode ? 'bg-indigo-500 text-white' : 'bg-gray-800 text-white';
       const poisonSelectedClass = darkMode ? 'bg-rose-700 text-white' : 'bg-pink-500 text-white';
       const cardClass = `border-2 rounded-lg p-4 ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-slate-300 bg-slate-200'}`;
       const rowBorder = darkMode ? 'border-gray-600' : 'border-slate-300';
+      const dividerClass = darkMode ? 'divide-gray-700' : 'divide-slate-300';
       const inputClass = `rounded border px-2 py-1 ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-slate-300 text-gray-900'}`;
       const subtleText = darkMode ? 'text-gray-400' : 'text-gray-600';
+      const sectionLabelClass = 'block text-lg font-semibold mb-2';
+      const subLabelClass = 'block text-sm font-medium mb-2';
       const color = {
         weapon: darkMode ? 'text-blue-400' : 'text-blue-600',
         green: darkMode ? 'text-green-400' : 'text-green-600',
@@ -501,9 +538,10 @@
         poison: darkMode ? 'text-rose-400' : 'text-pink-600',
       };
 
-      const hitBtnClass = (crits) => crits > 0
-        ? (darkMode ? 'bg-blue-900 hover:bg-blue-800' : 'bg-blue-500 hover:bg-blue-600')
-        : (darkMode ? 'bg-red-900 hover:bg-red-800' : 'bg-red-500 hover:bg-red-600');
+      const hitBtnClass = (crits) => {
+        const c = crits > 0 ? THEME.crit : THEME.hit;
+        return `${c[mode]} ${c[hoverKey]}`;
+      };
 
       const renderHitGroups = (startTotal, maxTotal, onRoll, zeroLabel = '', compact = false) => {
         const groups = [];
@@ -520,10 +558,16 @@
             );
             if (total === 0) break;
           }
-          groups.push(<div key={total} className="grid grid-cols-2 gap-2">{btns}</div>);
+          groups.push(<div key={total} className="grid grid-cols-2 gap-2 py-4 first:pt-0 last:pb-0">{btns}</div>);
         }
-        return <div className="flex flex-col gap-4">{groups}</div>;
+        return <div className={`flex flex-col max-w-xl divide-y ${dividerClass}`}>{groups}</div>;
       };
+
+      const hitsHeader = (
+        <label className={sectionLabelClass}>
+          Hits / Crits <span className={`ml-1 text-sm font-normal ${subtleText}`}>Click to roll</span>
+        </label>
+      );
 
       // Render helpers (plain functions, not components, so inputs keep focus while typing)
       const field = (label, control) => (
@@ -567,17 +611,22 @@
 
       return (
         <div className={`p-4 w-full min-h-screen ${darkMode ? 'bg-gray-900 text-gray-100' : 'bg-slate-100 text-gray-900'}`}>
-          <div className="flex justify-between items-center mb-4">
-            <h1 className="text-2xl font-bold">5e Piercer Feat Dice Roller</h1>
+          <div className="flex justify-between items-start gap-4 mb-4">
+            <div>
+              <h1 className="text-2xl font-bold">5e Piercer Feat Dice Roller</h1>
+              <p className={`text-sm mt-1 ${subtleText}`}>
+                Roll a full turn's damage in one tap, with the Piercer feat's once-per-turn reroll applied to the die most likely to improve.
+              </p>
+            </div>
             <button
               onClick={() => setDarkMode(!darkMode)}
-              className={`px-3 py-1 rounded text-sm ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-100' : 'bg-gray-200 hover:bg-gray-300 text-gray-900'}`}
+              className={`shrink-0 px-3 py-1 rounded text-sm ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-100' : 'bg-gray-200 hover:bg-gray-300 text-gray-900'}`}
             >
               {darkMode ? '☀️ Light' : '🌙 Dark'}
             </button>
           </div>
 
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2 mb-6">
             {[['roller', '🎲 Roller'], ['settings', '⚙️ Settings']].map(([key, label]) => (
               <button key={key} onClick={() => setView(key)}
                 className={`px-4 py-2 rounded font-medium ${view === key ? selectedNeutralClass : `${unselectedBtnClass} ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-300'}`}`}>
@@ -588,8 +637,8 @@
 
           {view === 'roller' && (
             <>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Weapon</label>
+              <div className="mb-6">
+                <label className={sectionLabelClass}>Weapon</label>
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(loadouts).map(([key, l]) => (
                     <button key={key} onClick={() => { setWeapon(key); setBonusRapier('none'); setDaggerTotal(0); setDaggerCrits(0); }}
@@ -602,8 +651,8 @@
                 </div>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Extra Damage</label>
+              <div className="mb-6">
+                <label className={sectionLabelClass}>Extra Damage</label>
                 <div className="flex flex-wrap gap-2">
                   <button onClick={() => toggleExtra('sneak')}
                     className={`px-3 py-2 rounded ${extras.sneak ? (darkMode ? 'bg-green-700 text-white' : 'bg-green-500 text-white') : unselectedBtnClass}`}>
@@ -649,10 +698,10 @@
 
               {weapon === 'daggerRapier' ? (
                 <div className="space-y-4 mb-6">
-                  <label className="block text-sm font-medium mb-2">Hits / Crits - Click to Roll</label>
-                  <div className="grid grid-cols-2 gap-4">
+                  {hitsHeader}
+                  <div className="grid grid-cols-2 gap-4 max-w-xl">
                     <div>
-                      <label className="block text-sm font-medium mb-2">Dagger Hits (Total)</label>
+                      <label className={subLabelClass}>Dagger Hits (Total)</label>
                       <div className="flex gap-2">
                         {Array.from({ length: A + 1 }, (_, n) => (
                           <button key={n} onClick={() => { setDaggerTotal(n); setDaggerCrits(Math.min(dCrits, n)); }}
@@ -663,7 +712,7 @@
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2">Dagger Crits (of those hits)</label>
+                      <label className={subLabelClass}>Dagger Crits (of those hits)</label>
                       <div className="flex gap-2">
                         {Array.from({ length: dTotal + 1 }, (_, n) => (
                           <button key={n} onClick={() => setDaggerCrits(n)}
@@ -675,7 +724,7 @@
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">Rapier (Hits / Crits) - Click to Roll</label>
+                    <label className={subLabelClass}>Rapier (Hits / Crits)</label>
                     {renderHitGroups(
                       dTotal > 0 ? 0 : 1,
                       A + 1 - dTotal,
@@ -687,10 +736,10 @@
                 </div>
               ) : isCrossbow ? (
                 <div className="mb-6">
-                  <label className="block text-sm font-medium mb-2">Hits / Crits - Click to Roll</label>
+                  {hitsHeader}
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium mb-2">Bonus Action Rapier ({weaponDice(W.rapier)})</label>
+                      <label className={subLabelClass}>Bonus Action Rapier ({weaponDice(W.rapier)})</label>
                       <div className="flex gap-2">
                         <button onClick={() => setBonusRapier('none')}
                           className={`px-3 py-1 rounded ${bonusRapier === 'none' ? (darkMode ? 'bg-gray-600 text-white' : 'bg-gray-800 text-white') : unselectedBtnClass}`}>
@@ -707,7 +756,7 @@
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2">{W[weapon].name} (Hits / Crits) - Click to Roll</label>
+                      <label className={subLabelClass}>{W[weapon].name} (Hits / Crits)</label>
                       {renderHitGroups(
                         bonusRapier !== 'none' ? 0 : 1,
                         A,
@@ -719,7 +768,7 @@
                 </div>
               ) : (
                 <div className="mb-6">
-                  <label className="block text-sm font-medium mb-2">Hits / Crits - Click to Roll</label>
+                  {hitsHeader}
                   {renderHitGroups(1, A + 1, (h, c) => rollDamage(h, c))}
                 </div>
               )}
@@ -895,6 +944,57 @@
                     Reset to Defaults
                   </button>
                 )}
+              </div>
+            </div>
+          )}
+
+          <footer className={`mt-10 pt-4 border-t flex justify-center gap-2 ${rowBorder}`}>
+            <button
+              onClick={() => setShowAbout(true)}
+              className={`px-3 py-1 rounded text-xs ${unselectedBtnClass} ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-300'}`}
+            >
+              About
+            </button>
+          </footer>
+
+          {showAbout && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setShowAbout(false)}>
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="about-title"
+                onClick={(e) => e.stopPropagation()}
+                className={`w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-lg border-2 p-5 ${darkMode ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-slate-300 text-gray-900'}`}
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <h2 id="about-title" className="text-xl font-bold">About</h2>
+                  <button onClick={() => setShowAbout(false)} aria-label="Close" className={`px-2 py-1 rounded text-sm ${unselectedBtnClass}`}>✕</button>
+                </div>
+                <div className="space-y-3 text-sm">
+                  <p>
+                    The 5e Piercer Feat Dice Roller rolls a full turn of weapon damage, including extra damage like Sneak Attack and poison, and applies the Piercer feat's reroll for you.
+                  </p>
+                  <h3 className="font-semibold text-base">How it works</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Pick a weapon and toggle any extra damage for the turn, then tap the button that matches how many attacks hit and how many were crits.</li>
+                    <li>Once-per-turn extra damage is applied to a crit when one lands, so its dice are doubled too.</li>
+                    <li>Critical hits double the weapon dice and add Piercer's extra weapon die.</li>
+                    <li>Piercer rerolls one piercing damage die per turn. When a reroll is likely to help, the die with the highest expected gain is rerolled automatically; otherwise you pick a die (its odds are shown) or skip. The new roll always stands.</li>
+                    <li>Adjust damage values in the Settings tab. Settings are saved in this browser only.</li>
+                  </ul>
+                  <h3 className="font-semibold text-base">License</h3>
+                  <p>
+                    Copyright © {APP_INFO.year} {APP_INFO.author}. Released under the BSD 3-Clause License.{' '}
+                    {APP_INFO.repoUrl ? (
+                      <>See the full license in the <a href={APP_INFO.repoUrl} target="_blank" rel="noopener noreferrer" className="underline">GitHub repository</a>.</>
+                    ) : 'See the full license in the project repository.'}
+                  </p>
+                  <h3 className="font-semibold text-base">Credits</h3>
+                  <p>Built with the help of Claude, an AI model made by Anthropic.</p>
+                  <p className={`text-xs ${subtleText}`}>
+                    Unofficial fan tool. Not affiliated with or endorsed by Wizards of the Coast.
+                  </p>
+                </div>
               </div>
             </div>
           )}
