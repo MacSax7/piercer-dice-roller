@@ -201,34 +201,50 @@
     const EXTRA_DEFAULTS = { count: 1, die: 6, type: 'weapon', color: 'green', crit: true, frequency: 'once' };
     const POISON_DEFAULTS = { count: 1, die: 6, dc: 10, onSave: 'half' };
 
+    // Starter set shown to new visitors and restored by "Reset to Defaults".
+    // An example Dexterity-based character meant to show off the options; edit to change it.
     const DEFAULT_SETTINGS = {
       version: SETTINGS_VERSION,
       attacksPerAction: 2,
       rerollThreshold: 50,
       weapons: [
-        { id: 'rapier', name: 'Rapier', count: 1, die: 8, mod: 9, type: 'piercing', bonusAction: true },
-        { id: 'dagger', name: 'Dagger', count: 1, die: 4, mod: 8, type: 'piercing', bonusAction: false },
-        { id: 'lightXbow', name: 'Light Crossbow', count: 1, die: 8, mod: 6, type: 'piercing', bonusAction: false },
-        { id: 'handXbow', name: 'Hand Crossbow', count: 1, die: 6, mod: 6, type: 'piercing', bonusAction: false },
+        { id: 'rapier', name: 'Rapier', count: 1, die: 8, mod: 3, type: 'piercing', bonusAction: false },
+        { id: 'shortsword', name: 'Shortsword', count: 1, die: 6, mod: 3, type: 'piercing', bonusAction: false },
+        { id: 'offhand-shortsword', name: 'Off-Hand Shortsword', count: 1, die: 6, mod: 0, type: 'piercing', bonusAction: true },
+        { id: 'longbow', name: 'Longbow', count: 1, die: 8, mod: 3, type: 'piercing', bonusAction: false },
       ],
       extras: [
-        { id: 'sneak', name: 'Sneak Attack', count: 2, die: 6, type: 'weapon', color: 'green', crit: true, frequency: 'once' },
-        { id: 'swarm', name: 'Swarm', count: 1, die: 6, type: 'piercing', color: 'green', crit: true, frequency: 'once' },
-        { id: 'favored', name: 'Favored Foe', count: 1, die: 6, type: 'weapon', color: 'purple', crit: true, frequency: 'once' },
+        { id: 'sneak', name: 'Sneak Attack', count: 3, die: 6, type: 'weapon', color: 'green', crit: true, frequency: 'once' },
+        { id: 'hex', name: 'Hex', count: 1, die: 6, type: 'necrotic', color: 'purple', crit: true, frequency: 'hit' },
       ],
       poisons: [
-        { id: 'poisoner', name: 'Poisoner Feat', count: 2, die: 8, dc: 14, onSave: 'none' },
+        { id: 'basic-poison', name: 'Basic Poison', count: 1, die: 4, dc: 10, onSave: 'none' },
+        { id: 'serpent-venom', name: 'Serpent Venom', count: 3, die: 6, dc: 11, onSave: 'half' },
       ],
     };
 
-    // Upgrades saved settings from older versions so nothing has to be re-entered
+    // Version 1 stored four fixed weapons and three fixed extras by key. These templates
+    // map those keys onto the current list format when old saved or exported settings load.
+    const V1_WEAPONS = [
+      { id: 'rapier', name: 'Rapier', count: 1, die: 8, mod: 9, type: 'piercing', bonusAction: true },
+      { id: 'dagger', name: 'Dagger', count: 1, die: 4, mod: 8, type: 'piercing', bonusAction: false },
+      { id: 'lightXbow', name: 'Light Crossbow', count: 1, die: 8, mod: 6, type: 'piercing', bonusAction: false },
+      { id: 'handXbow', name: 'Hand Crossbow', count: 1, die: 6, mod: 6, type: 'piercing', bonusAction: false },
+    ];
+    const V1_EXTRAS = [
+      { id: 'sneak', name: 'Sneak Attack', count: 2, die: 6, type: 'weapon', color: 'green', crit: true, frequency: 'once' },
+      { id: 'swarm', name: 'Swarm', count: 1, die: 6, type: 'piercing', color: 'green', crit: true, frequency: 'once' },
+      { id: 'favored', name: 'Favored Foe', count: 1, die: 6, type: 'weapon', color: 'purple', crit: true, frequency: 'once' },
+    ];
+
+    // Upgrades saved or imported settings from older versions so nothing has to be re-entered
     const migrateSettings = (saved) => {
       if (!saved || typeof saved !== 'object') return DEFAULT_SETTINGS;
 
       let weapons = saved.weapons;
       if (weapons && !Array.isArray(weapons)) {
         // Version 1 stored four fixed weapons by key; carry their dice and modifiers over
-        weapons = DEFAULT_SETTINGS.weapons.map(w => {
+        weapons = V1_WEAPONS.map(w => {
           const old = saved.weapons[w.id];
           return old ? { ...w, die: old.die ?? w.die, mod: old.mod ?? w.mod } : w;
         });
@@ -237,7 +253,7 @@
       let extras = saved.extras;
       if (extras && !Array.isArray(extras)) {
         // Version 1 stored three fixed extras by key; carry their dice over
-        extras = DEFAULT_SETTINGS.extras.map(e => {
+        extras = V1_EXTRAS.map(e => {
           const old = saved.extras[e.id];
           return old ? { ...e, count: old.count ?? e.count, die: old.die ?? e.die } : e;
         });
@@ -536,12 +552,59 @@
       const addItem = (list, item) => setSettings(s => ({ ...s, [list]: [...s[list], item] }));
       const removeItem = (list, id, min) => setSettings(s => (s[list].length <= min ? s : { ...s, [list]: s[list].filter(item => item.id !== id) }));
 
-      const resetSettings = () => {
-        setSettings(DEFAULT_SETTINGS);
-        setSelectedPoisonId(DEFAULT_SETTINGS.poisons[0].id);
-        selectMain(DEFAULT_SETTINGS.weapons[0].id);
+      // ---------- Export / Import ----------
+      const importInputRef = useRef(null);
+      const [transferStatus, setTransferStatus] = useState(null);
+
+      // Applies a full settings object and resets the turn setup to match (used by Reset and Import)
+      const applySettings = (next) => {
+        setSettings(next);
+        setSelectedPoisonId(next.poisons[0].id);
+        selectMain(next.weapons[0].id);
         setActiveExtras({});
+      };
+
+      const resetSettings = () => {
+        applySettings(DEFAULT_SETTINGS);
         setConfirmReset(false);
+        setTransferStatus(null);
+      };
+
+      // Downloads the current settings as a JSON file
+      const handleExport = () => {
+        const payload = { app: 'piercer-dice-roller', exportedAt: new Date().toISOString(), settings };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `piercer-settings-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        setTransferStatus({ type: 'ok', text: 'Settings exported.' });
+      };
+
+      // Loads settings from a previously exported file (older formats are upgraded)
+      const handleImportFile = (e) => {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = ''; // lets the same file be chosen again later
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const data = JSON.parse(reader.result);
+            const incoming = data && data.settings ? data.settings : data;
+            if (!incoming || typeof incoming !== 'object' || !incoming.weapons) throw new Error('Not a settings file');
+            applySettings(migrateSettings(incoming));
+            setConfirmReset(false);
+            setTransferStatus({ type: 'ok', text: `Imported settings from ${file.name}.` });
+          } catch (err) {
+            setTransferStatus({ type: 'error', text: "That file doesn't look like a settings file from this app." });
+          }
+        };
+        reader.onerror = () => setTransferStatus({ type: 'error', text: "Couldn't read that file." });
+        reader.readAsText(file);
       };
 
       // ---------- Rolling logic ----------
@@ -1211,10 +1274,35 @@
                   </button>
                 </div>
 
+                <div className={cardClass}>
+                  <h3 className="text-lg font-semibold mb-1">Export &amp; Import</h3>
+                  <p className={`text-xs mb-3 ${subtleText}`}>
+                    Save your setup as a file to back it up or load it on another device. Importing replaces your current settings. Display preferences aren't included.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button onClick={handleExport} className={`px-3 py-1 rounded text-sm ${unselectedBtnClass} ${unselectedHover}`}>
+                      Export Settings
+                    </button>
+                    <button
+                      onClick={() => importInputRef.current && importInputRef.current.click()}
+                      className={`px-3 py-1 rounded text-sm ${unselectedBtnClass} ${unselectedHover}`}
+                    >
+                      Import Settings
+                    </button>
+                    <input ref={importInputRef} type="file" accept=".json,application/json" onChange={handleImportFile} className="hidden" />
+                    {transferStatus && (
+                      <span className={`text-xs ${transferStatus.type === 'error' ? (darkMode ? 'text-red-400' : 'text-red-600') : subtleText}`}>
+                        {transferStatus.text}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className={`text-xs ${subtleText}`}>{saveMessage}</span>
                   {confirmReset ? (
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <span className={`text-xs ${subtleText}`}>Replaces your settings with the starter set. Export first to keep a copy.</span>
                       <button onClick={resetSettings}
                         className={`px-3 py-1 rounded text-sm text-white ${darkMode ? 'bg-red-800 hover:bg-red-700' : 'bg-red-600 hover:bg-red-700'}`}>
                         Confirm Reset
@@ -1233,11 +1321,11 @@
             )}
 
             <footer className={`mt-10 pt-4 border-t flex justify-center gap-2 ${rowBorder}`}>
-              <button onClick={() => setShowDisplay(true)} className={`px-3 py-1 rounded text-xs ${unselectedBtnClass} ${unselectedHover}`}>
-                Display
-              </button>
               <button onClick={() => setShowAbout(true)} className={`px-3 py-1 rounded text-xs ${unselectedBtnClass} ${unselectedHover}`}>
                 About
+              </button>
+              <button onClick={() => setShowDisplay(true)} className={`px-3 py-1 rounded text-xs ${unselectedBtnClass} ${unselectedHover}`}>
+                Display
               </button>
             </footer>
           </div>
